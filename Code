@@ -1,0 +1,113 @@
+import pygame
+import random
+import math
+import cv2
+import numpy as np
+
+# Inicialización de pygame y configuración de la ventana
+pygame.init()
+width, height = 800, 600
+screen = pygame.display.set_mode((width, height))
+clock = pygame.time.Clock()
+
+# Configuración de la grabación de video
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+video = cv2.VideoWriter('graph_animation2.mp4', fourcc, 30.0, (width, height))
+
+def get_rainbow_color(index, total):
+    """Genera un color del arcoíris para cada nodo según su índice."""
+    hue = int(360 * index / total)
+    color = pygame.Color(0)
+    color.hsva = (hue, 100, 100, 100)
+    return color
+
+class Vertex:
+    """Representa un vértice en el grafo."""
+    def __init__(self, x, y, index, total):
+        self.x = x
+        self.y = y
+        self.vx = 0
+        self.vy = 0
+        self.color = get_rainbow_color(index, total)
+
+class Edge:
+    """Representa una arista entre dos vértices."""
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+
+def create_dorogovtsev_mendes(n):
+    """Genera un grafo de Dorogovtsev-Mendes con 'n' nodos."""
+    vertices = [Vertex(random.randint(50, width-50), random.randint(50, height-50), i, n) for i in range(3)]
+    edges = [Edge(vertices[0], vertices[1]), Edge(vertices[1], vertices[2]), Edge(vertices[2], vertices[0])]
+    for i in range(3, n):
+        a = random.choice(edges)
+        new_vertex = Vertex(random.randint(50, width-50), random.randint(50, height-50), i, n)
+        vertices.append(new_vertex)
+        edges.append(Edge(new_vertex, a.start))
+        edges.append(Edge(new_vertex, a.end))
+    return vertices, edges
+
+vertices, edges = create_dorogovtsev_mendes(500)
+
+def apply_forces(vertices, edges):
+    """Aplica las fuerzas de repulsión y atracción para modelar el grafo."""
+    k = 400  # Constante de repulsión
+    length = 100  # Longitud deseada de las aristas
+    for vertex in vertices:
+        vertex.vx = vertex.vy = 0  # Reseteo de velocidades para estabilizar la simulación
+
+    # Fuerzas de repulsión
+    for i in range(len(vertices)):
+        for j in range(i + 1, len(vertices)):
+            dx = vertices[i].x - vertices[j].x
+            dy = vertices[i].y - vertices[j].y
+            distance = max(math.sqrt(dx**2 + dy**2), 0.1)  # Evita división por cero
+            force = k / distance**2
+            vertices[i].vx += dx / distance * force
+            vertices[j].vx -= dx / distance * force
+            vertices[i].vy += dy / distance * force
+            vertices[j].vy -= dy / distance * force
+
+    # Fuerzas de atracción
+    for edge in edges:
+        dx = edge.start.x - edge.end.x
+        dy = edge.start.y - edge.end.y
+        distance = math.sqrt(dx**2 + dy**2)
+        force = (distance - length)**2 / k
+        edge.start.vx -= dx / distance * force
+        edge.end.vx += dx / distance * force
+        edge.start.vy -= dy / distance * force
+        edge.end.vy += dy / distance * force
+
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+    apply_forces(vertices, edges)
+
+    for vertex in vertices:
+        vertex.x += vertex.vx * 0.1
+        vertex.y += vertex.vy * 0.1
+        # Asegura que los vértices no se salgan de la pantalla
+        vertex.x = max(min(vertex.x, width), 0)
+        vertex.y = max(min(vertex.y, height), 0)
+
+    screen.fill((255, 255, 255))  # Limpia la pantalla
+
+    for edge in edges:
+        pygame.draw.line(screen, (255, 0, 0), (int(edge.start.x), int(edge.start.y)), (int(edge.end.x), int(edge.end.y)), 2)
+    for vertex in vertices:
+        pygame.draw.circle(screen, vertex.color, (int(vertex.x), int(vertex.y)), 10)
+
+    pygame.display.flip()
+    clock.tick(30)
+
+    frame = pygame.surfarray.array3d(pygame.display.get_surface())
+    frame = frame.transpose([1, 0, 2])
+    video.write(cv2.cvtColor(np.array(frame), cv2.COLOR_RGB2BGR))
+
+video.release()
+pygame.quit()
